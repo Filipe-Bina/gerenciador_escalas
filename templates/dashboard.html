@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escala de Plantão Técnico</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <header class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0 text-primary">Plantão Técnico</h1>
+            <a href="/login" class="btn btn-outline-secondary btn-sm">Área Restrita</a>
+        </header>
+
+        <nav class="nav nav-pills nav-justified mb-4" id="pills-tab" role="tablist">
+            <button class="nav-link active me-1" id="fds-tab" data-bs-toggle="pill" data-bs-target="#fds" type="button" role="tab">Próximo FDS</button>
+            <button class="nav-link" id="mensal-tab" data-bs-toggle="pill" data-bs-target="#mensal" type="button" role="tab">Escala Mensal ({{ mes_ano }})</button>
+        </nav>
+
+        <div class="tab-content" id="pills-tabContent">
+            <!-- ABA PROXIMO FIM DE SEMANA -->
+            <div class="tab-pane fade show active" id="fds" role="tabpanel">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white font-weight-bold">Plantão do Próximo Final de Semana</div>
+                    <div class="list-group list-group-flush">
+                        {% if not fds %}
+                            <div class="list-group-item text-muted text-center py-4">Nenhuma escala cadastrada para este final de semana.</div>
+                        {% endif %}
+                        {% for r in fds %}
+                        <div class="list-group-item p-3">
+                            <div class="d-flex w-100 justify-content-between mb-1">
+                                <h5 class="mb-1 text-dark font-weight-bold">{{ r.data_formatada}}</h5>
+                                <span class="badge bg-secondary">{{ r.area }}</span>
+                            </div>
+                            <p class="mb-1 text-muted">Turno: <strong>{{ r.turno }}</strong></p>
+                            <small class="text-primary font-weight-bold">Téc: {{ r.tecnico_nome }} (RE {{ r.tecnico_re }})</small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA ESCALA MENSAL -->
+            <div class="tab-pane fade" id="mensal" role="tabpanel">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-dark text-white">Calendário Mensal Completo</div>
+                    <div class="table-responsive">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Área</th>
+                                    <th>Horário</th>
+                                    <th>Plantonista</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if not mensal %}
+                                <tr><td colspan="4" class="text-center text-muted py-3">Escala mensal ainda não gerada.</td></tr>
+                                {% endif %}
+                                {% for r in mensal %}
+                                <tr>
+                                    <td><strong>{{ r.data_formatada}}</strong></td>
+                                    <td><span class="badge bg-info text-dark">{{ r.area }}</span></td>
+                                    <td><small>{{ r.turno }}</small></td>
+                                    <td class="text-primary font-weight-bold">{{ r.tecnico_nome }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
