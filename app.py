@@ -4,6 +4,9 @@ from calendar import monthrange
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import psycopg2
 from psycopg2.extras import DictCursor
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'chave_secreta_fallback')

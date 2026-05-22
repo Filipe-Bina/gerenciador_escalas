@@ -30,7 +30,7 @@
                         {% for r in fds %}
                         <div class="list-group-item p-3">
                             <div class="d-flex w-100 justify-content-between mb-1">
-                                <h5 class="mb-1 text-dark font-weight-bold">{{ r.data_formatada}}</h5>
+                                <h5 class="mb-1 text-dark font-weight-bold">{{ r.data_formatada }}</h5>
                                 <span class="badge bg-secondary">{{ r.area }}</span>
                             </div>
                             <p class="mb-1 text-muted">Turno: <strong>{{ r.turno }}</strong></p>
@@ -61,7 +61,7 @@
                                 {% endif %}
                                 {% for r in mensal %}
                                 <tr>
-                                    <td><strong>{{ r.data_formatada}}</strong></td>
+                                    <td><strong>{{ r.data_formatada }}</strong></td>
                                     <td><span class="badge bg-info text-dark">{{ r.area }}</span></td>
                                     <td><small>{{ r.turno }}</small></td>
                                     <td class="text-primary font-weight-bold">{{ r.tecnico_nome }}</td>
