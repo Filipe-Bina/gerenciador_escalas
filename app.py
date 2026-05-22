@@ -49,9 +49,8 @@ TECNICOS = [
 ]
 
 def get_db_connection():
-    # Conecta ao banco de dados PostgreSQL na nuvem
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
-    return conn
+    # Adicionado o parâmetro sslmode para atender a exigência de segurança do Supabase
+    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor, sslmode='require')
 
 def init_db():
     conn = get_db_connection()
