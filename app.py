@@ -11,18 +11,26 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'chave_secreta_fallback')
 
-# String de Conexão fornecida pelo Supabase (será configurada no servidor em nuvem)
+# ============================================ VERIFICAÇÃO DA VARIÁVEL DATABASE_URL ============================================
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+if not DATABASE_URL:
+    print("⚠️ AVISO: DATABASE_URL não está configurada!")
+    print("   Configure a variável DATABASE_URL nas variáveis de ambiente do Render")
+    print("   Exemplo: postgres://user:pass@host:port/database")
+
+# Lista de admins (em produção, use banco de dados)
 ADMIN_USERS = {
     "admin1": "senha123",
     "admin2": "senha456"
 }
 
+# Feriados nacional Brasil 2026
 FERIADOS_2026 = [
     "2026-07-09", "2026-09-07", "2026-10-12", "2026-11-02", "2026-11-15", "2026-11-20", "2026-12-25"
 ]
 
+# Lista de técnicos por área
 TECNICOS = [
     {"re": "30981", "nome": "ANDERSON PEDRO DE SOUZA", "area": "TAUBATE"},
     {"re": "32965", "nome": "FÁBIO APARECIDO ALVES", "area": "TAUBATE"},
@@ -49,8 +57,10 @@ TECNICOS = [
 ]
 
 def get_db_connection():
-    # Adicionado o parâmetro sslmode para atender a exigência de segurança do Supabase
-    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor, sslmode='require')
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL não configurada! Configure no painel do Render.")
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
+    return conn
 
 def init_db():
     conn = get_db_connection()
@@ -70,8 +80,16 @@ def init_db():
     cursor.close()
     conn.close()
 
-def obter_proximo_tecnico(area, contagem_turnos):
+def obter_proximo_tecnico(area, contagem_turnos, tecnico_excluir=None):
+    """Retorna o técnico com menos turnos na área, excluindo opcionalmente um técnico específico"""
     tecs_area = [t for t in TECNICOS if t['area'] == area]
+    
+    if tecnico_excluir:
+        tecs_area = [t for t in tecs_area if t['re'] != tecnico_excluir]
+    
+    if not tecs_area:
+        tecs_area = [t for t in TECNICOS if t['area'] == area]
+    
     tecs_area.sort(key=lambda t: contagem_turnos.get(t['re'], 0))
     return tecs_area[0]
 
@@ -79,9 +97,9 @@ def gerar_escala_automatica(ano, mes):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Remove escala existente do mês solicitado usando sintaxe correta de data
     primeiro_dia = f"{ano}-{mes:02d}-01"
     ultimo_dia = f"{ano}-{mes:02d}-{monthrange(ano, mes)[1]}"
+    
     cursor.execute("DELETE FROM escala WHERE data BETWEEN %s AND %s", (primeiro_dia, ultimo_dia))
     
     cursor.execute("SELECT tecnico_re, COUNT(*) FROM escala GROUP BY tecnico_re")
@@ -97,41 +115,48 @@ def gerar_escala_automatica(ano, mes):
         is_plantao = wd in (5, 6) or data_str in FERIADOS_2026
         
         if is_plantao:
-            # --- SJC ---
-            t1 = obter_proximo_tecnico("SJC", contagem_turnos)
-            contagem_turnos[t1['re']] = contagem_turnos.get(t1['re'], 0) + 1
-            cursor.execute("INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                           (data_str, "SJC", "08:00 às 17:00", t1['re'], t1['nome']))
+            # SJC
+            t1_sjc = obter_proximo_tecnico("SJC", contagem_turnos)
+            contagem_turnos[t1_sjc['re']] = contagem_turnos.get(t1_sjc['re'], 0) + 1
+            cursor.execute(
+                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                (data_str, "SJC", "08:00 às 17:00", t1_sjc['re'], t1_sjc['nome'])
+            )
             
-            t2 = obter_proximo_tecnico("SJC", contagem_turnos)
-            while t2['re'] == t1['re']:
-                contagem_turnos[t2['re']] += 100
-                t2 = obter_proximo_tecnico("SJC", contagem_turnos)
-                contagem_turnos[t2['re']] -= 100
-            contagem_turnos[t2['re']] = contagem_turnos.get(t2['re'], 0) + 1
-            cursor.execute("INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                           (data_str, "SJC", "17:00 às 06:00", t2['re'], t2['nome']))
+            t2_sjc = obter_proximo_tecnico("SJC", contagem_turnos, tecnico_excluir=t1_sjc['re'])
+            contagem_turnos[t2_sjc['re']] = contagem_turnos.get(t2_sjc['re'], 0) + 1
+            cursor.execute(
+                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                (data_str, "SJC", "17:00 às 06:00", t2_sjc['re'], t2_sjc['nome'])
+            )
 
-            # --- TAUBATÉ ---
+            # TAUBATÉ
             t1_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos)
             contagem_turnos[t1_taub['re']] = contagem_turnos.get(t1_taub['re'], 0) + 1
-            cursor.execute("INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                           (data_str, "TAUBATE", "08:00 às 17:00", t1_taub['re'], t1_taub['nome']))
+            cursor.execute(
+                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                (data_str, "TAUBATE", "08:00 às 17:00", t1_taub['re'], t1_taub['nome'])
+            )
             
-            t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos)
-            while t2_taub['re'] == t1_taub['re']:
-                contagem_turnos[t2_taub['re']] += 100
-                t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos)
-                contagem_turnos[t2_taub['re']] -= 100
+            t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, tecnico_excluir=t1_taub['re'])
             contagem_turnos[t2_taub['re']] = contagem_turnos.get(t2_taub['re'], 0) + 1
-            cursor.execute("INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                           (data_str, "TAUBATE", "17:00 às 06:00", t2_taub['re'], t2_taub['nome']))
+            cursor.execute(
+                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                (data_str, "TAUBATE", "17:00 às 06:00", t2_taub['re'], t2_taub['nome'])
+            )
 
-            # --- LITORAL ---
+            # LITORAL
             t_lit = obter_proximo_tecnico("LITORAL", contagem_turnos)
             contagem_turnos[t_lit['re']] = contagem_turnos.get(t_lit['re'], 0) + 1
-            cursor.execute("INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                           (data_str, "LITORAL", "08:00 às 17:00", t_lit['re'], t_lit['nome']))
+            cursor.execute(
+                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                (data_str, "LITORAL", "08:00 às 17:00", t_lit['re'], t_lit['nome'])
+            )
 
     conn.commit()
     cursor.close()
@@ -140,7 +165,6 @@ def gerar_escala_automatica(ano, mes):
 @app.route('/')
 def dashboard():
     hoje = datetime.date.today()
-    # Forçar visualização inicial focada em Junho de 2026 para fins de teste
     if hoje < datetime.date(2026, 6, 1):
         hoje = datetime.date(2026, 6, 1)
         
@@ -151,14 +175,20 @@ def dashboard():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Busca Escala Mensal Completa
     primeiro_dia = f"{hoje.year}-{hoje.month:02d}-01"
-    ultimo_day = f"{hoje.year}-{hoje.month:02d}-{monthrange(hoje.year, hoje.month)[1]}"
-    cursor.execute("SELECT id, to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome FROM escala WHERE data BETWEEN %s AND %s ORDER BY data ASC, area ASC, turno ASC", (primeiro_dia, ultimo_day))
+    ultimo_dia = f"{hoje.year}-{hoje.month:02d}-{monthrange(hoje.year, hoje.month)[1]}"
+    cursor.execute(
+        "SELECT id, to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome "
+        "FROM escala WHERE data BETWEEN %s AND %s ORDER BY data ASC, area ASC, turno ASC", 
+        (primeiro_dia, ultimo_dia)
+    )
     escala_mensal = cursor.fetchall()
     
-    # Busca Escala do Fim de Semana Próximo
-    cursor.execute("SELECT to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome FROM escala WHERE data IN (%s, %s) ORDER BY data ASC, area ASC, turno ASC", (proximo_sabado, proximo_domingo))
+    cursor.execute(
+        "SELECT to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome "
+        "FROM escala WHERE data IN (%s, %s) ORDER BY data ASC, area ASC, turno ASC", 
+        (proximo_sabado, proximo_domingo)
+    )
     escala_fds = cursor.fetchall()
     
     cursor.close()
@@ -216,6 +246,5 @@ def admin():
 
 if __name__ == '__main__':
     init_db()
-    # O Render gerencia a porta dinamicamente, por isso usamos os.environ
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
