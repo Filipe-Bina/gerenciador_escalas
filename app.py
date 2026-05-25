@@ -76,6 +76,67 @@ def is_plantao_day(data, feriados=None):
     return data.weekday() >= 5 or data_str in feriados
 
 
+def resolve_dashboard_month():
+    current_month = datetime.date.today().replace(day=1)
+    ano_param = request.args.get('ano')
+    mes_param = request.args.get('mes')
+
+    try:
+        return datetime.date(int(ano_param), int(mes_param), 1)
+    except (TypeError, ValueError):
+        return current_month
+
+
+def resolve_dashboard_weekend_dates(selected_month, reference_date=None):
+    if reference_date is None:
+        reference_date = datetime.date.today()
+
+    first_day = selected_month
+    last_day = selected_month.replace(day=monthrange(selected_month.year, selected_month.month)[1])
+
+    if selected_month.year == reference_date.year and selected_month.month == reference_date.month:
+        days_until_saturday = (5 - reference_date.weekday()) % 7
+        next_saturday = reference_date + datetime.timedelta(days=days_until_saturday)
+
+        if next_saturday <= last_day:
+            return next_saturday, next_saturday + datetime.timedelta(days=1)
+
+        return None
+
+    first_saturday = first_day + datetime.timedelta(days=(5 - first_day.weekday()) % 7)
+    return first_saturday, first_saturday + datetime.timedelta(days=1)
+
+
+def build_month_calendar_view(month_start, rows):
+    month_last_day = monthrange(month_start.year, month_start.month)[1]
+    first_weekday = month_start.weekday()
+    calendar_days = []
+
+    for _ in range(first_weekday):
+        calendar_days.append({"empty": True})
+
+    entries_by_day = {}
+    for row in rows:
+        day = int(row['data_formatada'][:2])
+        entries_by_day.setdefault(day, []).append({
+            "area": row['area'],
+            "turno": row['turno'],
+            "tecnico_nome": row['tecnico_nome'],
+        })
+
+    for day in range(1, month_last_day + 1):
+        date_obj = datetime.date(month_start.year, month_start.month, day)
+        calendar_days.append({
+            "day": day,
+            "date": date_obj,
+            "is_weekend": date_obj.weekday() >= 5,
+            "entries": entries_by_day.get(day, []),
+            "empty": False,
+        })
+
+    return calendar_days
+
+
 # Lista de técnicos por área
 TECNICOS = [
     {"re": "30981", "nome": "ANDERSON PEDRO DE SOUZA", "area": "TAUBATE"},
@@ -210,34 +271,57 @@ def gerar_escala_automatica(ano, mes):
 
 @app.route('/')
 def dashboard():
-    hoje = datetime.date.today()
+    mes_selecionado = resolve_dashboard_month()
 
-    dias_para_sabado = (5 - hoje.weekday()) % 7
-    proximo_sabado = hoje + datetime.timedelta(days=dias_para_sabado)
-    proximo_domingo = proximo_sabado + datetime.timedelta(days=1)
+    def proximo_mes(data):
+        if data.month == 12:
+            return data.replace(year=data.year + 1, month=1)
+        return data.replace(month=data.month + 1)
+
+    def mes_anterior(data):
+        if data.month == 1:
+            return data.replace(year=data.year - 1, month=12)
+        return data.replace(month=data.month - 1)
+
+    prev_month = mes_anterior(mes_selecionado)
+    next_month = proximo_mes(mes_selecionado)
+    proximo_sabado, proximo_domingo = resolve_dashboard_weekend_dates(mes_selecionado)
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    
-    primeiro_dia = f"{hoje.year}-{hoje.month:02d}-01"
-    ultimo_dia = f"{hoje.year}-{hoje.month:02d}-{monthrange(hoje.year, hoje.month)[1]}"
+
+    primeiro_dia = f"{mes_selecionado.year}-{mes_selecionado.month:02d}-01"
+    ultimo_dia = f"{mes_selecionado.year}-{mes_selecionado.month:02d}-{monthrange(mes_selecionado.year, mes_selecionado.month)[1]}"
     cursor.execute(
         "SELECT id, to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome "
-        "FROM escala WHERE data BETWEEN %s AND %s ORDER BY data ASC, area ASC, turno ASC", 
+        "FROM escala WHERE data BETWEEN %s AND %s ORDER BY data ASC, area ASC, turno ASC",
         (primeiro_dia, ultimo_dia)
     )
     escala_mensal = cursor.fetchall()
-    
-    cursor.execute(
-        "SELECT to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome "
-        "FROM escala WHERE data IN (%s, %s) ORDER BY data ASC, area ASC, turno ASC", 
-        (proximo_sabado, proximo_domingo)
-    )
-    escala_fds = cursor.fetchall()
-    
+
+    if proximo_sabado and proximo_domingo:
+        cursor.execute(
+            "SELECT to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome "
+            "FROM escala WHERE data IN (%s, %s) ORDER BY data ASC, area ASC, turno ASC",
+            (proximo_sabado, proximo_domingo)
+        )
+        escala_fds = cursor.fetchall()
+    else:
+        escala_fds = []
+
+    calendar_days = build_month_calendar_view(mes_selecionado, escala_mensal)
+
     cursor.close()
     conn.close()
-    return render_template('dashboard.html', mensal=escala_mensal, fds=escala_fds, mes_ano=hoje.strftime("%m/%Y"))
+    return render_template(
+        'dashboard.html',
+        calendar_days=calendar_days,
+        fds=escala_fds,
+        mes_ano=mes_selecionado.strftime("%m/%Y"),
+        mes_selecionado=mes_selecionado,
+        prev_month=prev_month,
+        next_month=next_month,
+    )
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

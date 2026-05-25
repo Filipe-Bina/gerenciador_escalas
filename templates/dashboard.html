@@ -18,6 +18,18 @@
             <button class="nav-link" id="mensal-tab" data-bs-toggle="pill" data-bs-target="#mensal" type="button" role="tab">Escala Mensal ({{ mes_ano }})</button>
         </nav>
 
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+            <div>
+                <div class="text-muted small">Visualizando</div>
+                <h2 class="h5 mb-0 text-primary">{{ mes_ano }}</h2>
+            </div>
+            <div class="btn-group" role="group" aria-label="Navegação de meses">
+                <a href="/?ano={{ prev_month.year }}&mes={{ prev_month.month }}" class="btn btn-outline-secondary btn-sm">‹ Mês anterior</a>
+                <a href="/" class="btn btn-outline-primary btn-sm">Hoje</a>
+                <a href="/?ano={{ next_month.year }}&mes={{ next_month.month }}" class="btn btn-outline-secondary btn-sm">Próximo mês ›</a>
+            </div>
+        </div>
+
         <div class="tab-content" id="pills-tabContent">
             <!-- ABA PROXIMO FIM DE SEMANA -->
             <div class="tab-pane fade show active" id="fds" role="tabpanel">
@@ -45,30 +57,47 @@
             <div class="tab-pane fade" id="mensal" role="tabpanel">
                 <div class="card shadow-sm">
                     <div class="card-header bg-dark text-white">Calendário Mensal Completo</div>
-                    <div class="table-responsive">
-                        <table class="table table-striped align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Data</th>
-                                    <th>Área</th>
-                                    <th>Horário</th>
-                                    <th>Plantonista</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if not mensal %}
-                                <tr><td colspan="4" class="text-center text-muted py-3">Escala mensal ainda não gerada.</td></tr>
+                    <div class="card-body">
+                        <div class="row text-center fw-semibold text-uppercase small text-muted mb-2">
+                            <div class="col">Dom</div>
+                            <div class="col">Seg</div>
+                            <div class="col">Ter</div>
+                            <div class="col">Qua</div>
+                            <div class="col">Qui</div>
+                            <div class="col">Sex</div>
+                            <div class="col">Sab</div>
+                        </div>
+
+                        <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-7 g-2">
+                            {% for cell in calendar_days %}
+                            <div class="col">
+                                {% if cell.empty %}
+                                <div class="border rounded p-2 bg-light text-muted" style="min-height: 140px;">
+                                    <div class="small">—</div>
+                                </div>
+                                {% else %}
+                                <div class="border rounded p-2 h-100 {% if cell.is_weekend %}bg-warning bg-opacity-10{% else %}bg-white{% endif %}" style="min-height: 140px;">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <span class="fw-bold">{{ cell.day }}</span>
+                                        <span class="badge bg-light text-dark small">{{ cell.date.strftime('%a') }}</span>
+                                    </div>
+
+                                    {% if cell.entries %}
+                                        {% for entry in cell.entries %}
+                                        <div class="mb-2">
+                                            <span class="badge bg-secondary mb-1">{{ entry.area }}</span>
+                                            <div class="small text-dark">{{ entry.turno }}</div>
+                                            <div class="small text-primary fw-semibold">{{ entry.tecnico_nome }}</div>
+                                        </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="small text-muted">Sem escala</div>
+                                    {% endif %}
+                                </div>
                                 {% endif %}
-                                {% for r in mensal %}
-                                <tr>
-                                    <td><strong>{{ r.data_formatada }}</strong></td>
-                                    <td><span class="badge bg-info text-dark">{{ r.area }}</span></td>
-                                    <td><small>{{ r.turno }}</small></td>
-                                    <td class="text-primary font-weight-bold">{{ r.tecnico_nome }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
             </div>
