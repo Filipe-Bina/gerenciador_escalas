@@ -1,6 +1,8 @@
 import os
+import json
 import datetime
 from calendar import monthrange
+from urllib import request as urllib_request
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import psycopg2
 from psycopg2.extras import DictCursor
@@ -25,10 +27,54 @@ ADMIN_USERS = {
     "admin2": "senha456"
 }
 
-# Feriados nacional Brasil 2026
-FERIADOS_2026 = [
-    "2026-07-09", "2026-09-07", "2026-10-12", "2026-11-02", "2026-11-15", "2026-11-20", "2026-12-25"
-]
+FERIADOS_API_URL = "https://brasilapi.com.br/api/feriados/v1/{ano}?estado=SP"
+FERIADOS_HEADERS = {"User-Agent": "Mozilla/5.0"}
+SP_STATE_HOLIDAYS = {
+    2026: {"2026-07-09"},
+}
+
+
+def parse_holiday_payload(payload):
+    return {item.get("date") for item in payload if isinstance(item, dict) and item.get("date")}
+
+
+def fetch_public_holidays(ano):
+    req = urllib_request.Request(
+        FERIADOS_API_URL.format(ano=ano),
+        headers=FERIADOS_HEADERS,
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return set()
+
+    return parse_holiday_payload(payload)
+
+
+def load_school_holidays(ano):
+    valor = os.environ.get("SP_SCHOOL_HOLIDAYS", "")
+    if not valor:
+        return set()
+
+    return {item.strip() for item in valor.split(",") if item.strip() and item.strip().startswith(f"{ano}-")}
+
+
+def load_holidays_for_year(ano):
+    feriados = fetch_public_holidays(ano)
+    feriados.update(SP_STATE_HOLIDAYS.get(ano, set()))
+    feriados.update(load_school_holidays(ano))
+    return feriados
+
+
+def is_plantao_day(data, feriados=None):
+    if feriados is None:
+        feriados = load_holidays_for_year(data.year)
+
+    data_str = data.strftime("%Y-%m-%d")
+    return data.weekday() >= 5 or data_str in feriados
+
 
 # Lista de técnicos por área
 TECNICOS = [
@@ -106,14 +152,14 @@ def gerar_escala_automatica(ano, mes):
     contagem_turnos = dict(cursor.fetchall())
     
     num_dias = monthrange(ano, mes)[1]
-    
+    feriados_do_ano = load_holidays_for_year(ano)
+
     for dia in range(1, num_dias + 1):
         data_atual = datetime.date(ano, mes, dia)
         data_str = data_atual.strftime("%Y-%m-%d")
-        wd = data_atual.weekday()
-        
-        is_plantao = wd in (5, 6) or data_str in FERIADOS_2026
-        
+
+        is_plantao = is_plantao_day(data_atual, feriados_do_ano)
+
         if is_plantao:
             # SJC
             t1_sjc = obter_proximo_tecnico("SJC", contagem_turnos)
@@ -165,13 +211,11 @@ def gerar_escala_automatica(ano, mes):
 @app.route('/')
 def dashboard():
     hoje = datetime.date.today()
-    if hoje < datetime.date(2026, 6, 1):
-        hoje = datetime.date(2026, 6, 1)
-        
+
     dias_para_sabado = (5 - hoje.weekday()) % 7
     proximo_sabado = hoje + datetime.timedelta(days=dias_para_sabado)
     proximo_domingo = proximo_sabado + datetime.timedelta(days=1)
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
     
