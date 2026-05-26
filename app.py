@@ -574,7 +574,7 @@ def admin():
             except Exception as e:
                 flash(f"Erro ao editar: {e}", "danger")
 
-        return redirect(url_for("admin_panel"))
+        return redirect(url_for("admin"))
 
     # GET — Carrega dados para o painel
     hoje = date.today()
