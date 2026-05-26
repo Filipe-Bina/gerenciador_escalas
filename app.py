@@ -117,6 +117,25 @@ def load_inactive_tecnicos_for_period(start_date, end_date):
     return inactive_by_date
 
 
+def load_previous_month_turn_counts(ano, mes):
+    current_month = datetime.date(ano, mes, 1)
+    previous_month = current_month.replace(month=current_month.month - 1) if current_month.month > 1 else current_month.replace(year=current_month.year - 1, month=12)
+    previous_start = previous_month
+    previous_end = previous_month.replace(day=monthrange(previous_month.year, previous_month.month)[1])
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT tecnico_re, COUNT(*) FROM escala WHERE data BETWEEN %s AND %s GROUP BY tecnico_re",
+        (previous_start.strftime("%Y-%m-%d"), previous_end.strftime("%Y-%m-%d")),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return dict(rows)
+
+
 def resolve_dashboard_month():
     current_month = datetime.date.today().replace(day=1)
     ano_param = request.args.get('ano')
@@ -148,9 +167,10 @@ def resolve_dashboard_weekend_dates(selected_month, reference_date=None):
     return first_saturday, first_saturday + datetime.timedelta(days=1)
 
 
-def build_month_calendar_view(month_start, rows):
+def build_month_calendar_view(month_start, rows, holiday_dates=None):
     month_last_day = monthrange(month_start.year, month_start.month)[1]
     first_weekday = month_start.weekday()
+    holiday_dates = holiday_dates or set()
     calendar_days = []
 
     for _ in range(first_weekday):
@@ -163,14 +183,18 @@ def build_month_calendar_view(month_start, rows):
             "area": row['area'],
             "turno": row['turno'],
             "tecnico_nome": row['tecnico_nome'],
+            "tecnico_re": row['tecnico_re'],
         })
 
     for day in range(1, month_last_day + 1):
         date_obj = datetime.date(month_start.year, month_start.month, day)
+        date_key = date_obj.isoformat()
         calendar_days.append({
             "day": day,
             "date": date_obj,
+            "date_key": date_key,
             "is_weekend": date_obj.weekday() >= 5,
+            "is_holiday": date_key in holiday_dates,
             "entries": entries_by_day.get(day, []),
             "empty": False,
         })
@@ -247,8 +271,8 @@ def init_db():
     conn.close()
 
 
-def obter_proximo_tecnico(area, contagem_turnos, tecnico_excluir=None, inactive_re=None, data=None):
-    """Retorna o técnico com menos turnos na área, excluindo opcionalmente um técnico específico e técnicos inativos."""
+def obter_proximo_tecnico(area, contagem_turnos, tecnico_excluir=None, inactive_re=None, data=None, historico_turnos=None, peso_mes_anterior=2):
+    """Retorna o técnico com menor carga balanceada, priorizando o histórico do mês anterior."""
     tecs_area = [t for t in TECNICOS if t['area'] == area]
 
     if tecnico_excluir:
@@ -260,7 +284,14 @@ def obter_proximo_tecnico(area, contagem_turnos, tecnico_excluir=None, inactive_
     if not tecs_area:
         return None
 
-    tecs_area.sort(key=lambda t: contagem_turnos.get(t['re'], 0))
+    historico_turnos = historico_turnos or {}
+
+    def score(tecnico):
+        atual = contagem_turnos.get(tecnico['re'], 0)
+        historico = historico_turnos.get(tecnico['re'], 0)
+        return atual + (historico * peso_mes_anterior)
+
+    tecs_area.sort(key=score)
     return tecs_area[0]
 
 
@@ -274,8 +305,8 @@ def gerar_escala_automatica(ano, mes):
 
     cursor.execute("DELETE FROM escala WHERE data BETWEEN %s AND %s", (primeiro_dia, ultimo_dia))
 
-    cursor.execute("SELECT tecnico_re, COUNT(*) FROM escala GROUP BY tecnico_re")
-    contagem_turnos = dict(cursor.fetchall())
+    historico_turnos = load_previous_month_turn_counts(ano, mes)
+    contagem_turnos = {}
 
     num_dias = monthrange(ano, mes)[1]
     feriados_do_ano = load_holidays_for_year(ano)
@@ -290,7 +321,7 @@ def gerar_escala_automatica(ano, mes):
 
         if is_plantao:
             # SJC
-            t1_sjc = obter_proximo_tecnico("SJC", contagem_turnos, inactive_re=inactive_re)
+            t1_sjc = obter_proximo_tecnico("SJC", contagem_turnos, inactive_re=inactive_re, historico_turnos=historico_turnos)
             if t1_sjc:
                 contagem_turnos[t1_sjc['re']] = contagem_turnos.get(t1_sjc['re'], 0) + 1
                 cursor.execute(
@@ -299,7 +330,7 @@ def gerar_escala_automatica(ano, mes):
                     (data_str, "SJC", "08:00 às 17:00", t1_sjc['re'], t1_sjc['nome'])
                 )
 
-                t2_sjc = obter_proximo_tecnico("SJC", contagem_turnos, tecnico_excluir=t1_sjc['re'], inactive_re=inactive_re)
+                t2_sjc = obter_proximo_tecnico("SJC", contagem_turnos, tecnico_excluir=t1_sjc['re'], inactive_re=inactive_re, historico_turnos=historico_turnos)
                 if t2_sjc:
                     contagem_turnos[t2_sjc['re']] = contagem_turnos.get(t2_sjc['re'], 0) + 1
                     cursor.execute(
@@ -309,7 +340,7 @@ def gerar_escala_automatica(ano, mes):
                     )
 
             # TAUBATÉ
-            t1_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, inactive_re=inactive_re)
+            t1_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, inactive_re=inactive_re, historico_turnos=historico_turnos)
             if t1_taub:
                 contagem_turnos[t1_taub['re']] = contagem_turnos.get(t1_taub['re'], 0) + 1
                 cursor.execute(
@@ -318,7 +349,7 @@ def gerar_escala_automatica(ano, mes):
                     (data_str, "TAUBATE", "08:00 às 17:00", t1_taub['re'], t1_taub['nome'])
                 )
 
-                t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, tecnico_excluir=t1_taub['re'], inactive_re=inactive_re)
+                t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, tecnico_excluir=t1_taub['re'], inactive_re=inactive_re, historico_turnos=historico_turnos)
                 if t2_taub:
                     contagem_turnos[t2_taub['re']] = contagem_turnos.get(t2_taub['re'], 0) + 1
                     cursor.execute(
@@ -328,7 +359,7 @@ def gerar_escala_automatica(ano, mes):
                     )
 
             # LITORAL
-            t_lit = obter_proximo_tecnico("LITORAL", contagem_turnos, inactive_re=inactive_re)
+            t_lit = obter_proximo_tecnico("LITORAL", contagem_turnos, inactive_re=inactive_re, historico_turnos=historico_turnos)
             if t_lit:
                 contagem_turnos[t_lit['re']] = contagem_turnos.get(t_lit['re'], 0) + 1
                 cursor.execute(
@@ -381,7 +412,8 @@ def dashboard():
     else:
         escala_fds = []
 
-    calendar_days = build_month_calendar_view(mes_selecionado, escala_mensal)
+    feriados_do_mes = load_holidays_for_year(mes_selecionado.year)
+    calendar_days = build_month_calendar_view(mes_selecionado, escala_mensal, holiday_dates=feriados_do_mes)
 
     cursor.close()
     conn.close()

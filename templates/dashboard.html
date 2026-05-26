@@ -1,108 +1,386 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escala de Plantão Técnico</title>
+    <title>Plantão Técnico GTD • Escala, feriados e calendário mensal</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-page: #f3f7fb;
+            --primary: #0f62fe;
+            --primary-deep: #0b4fd1;
+            --surface: rgba(255, 255, 255, 0.95);
+            --border: #dbe5f1;
+            --muted: #5f6f81;
+            --weekend: #fff5db;
+            --weekend-border: #f3d76b;
+            --holiday: #fff8df;
+            --holiday-border: #ffd968;
+            --shadow: 0 18px 40px rgba(15, 98, 254, 0.12);
+        }
+
+        body {
+            background:
+                radial-gradient(circle at top left, rgba(15, 98, 254, 0.14), transparent 20%),
+                linear-gradient(180deg, #f4f8ff 0%, var(--bg-page) 40%, #f9fbff 100%);
+            color: #102033;
+        }
+
+        .page-shell {
+            max-width: 1280px;
+        }
+
+        .hero-card {
+            background:
+                linear-gradient(135deg, rgba(15, 98, 254, 0.98), rgba(33, 114, 255, 0.94)),
+                radial-gradient(circle at top right, rgba(255,255,255,0.16), transparent 20%);
+            border: 0;
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -18% -45% auto;
+            width: 220px;
+            height: 220px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 999px;
+        }
+
+        .hero-card .text-muted,
+        .hero-card small {
+            color: rgba(255, 255, 255, 0.86) !important;
+        }
+
+        .hero-pill {
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.16);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+        }
+
+        .system-title {
+            letter-spacing: -0.045em;
+            font-weight: 800;
+            line-height: 1.08;
+            text-shadow: 0 4px 24px rgba(15, 98, 254, 0.2);
+        }
+
+        .dashboard-card {
+            border: 0;
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .dashboard-card .card-header {
+            border: 0;
+            padding: 1.1rem 1.25rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
+
+        .summary-card {
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 10px 28px rgba(16, 32, 51, 0.06);
+        }
+
+        .summary-card small {
+            color: var(--muted);
+        }
+
+        .nav-pills .nav-link {
+            border-radius: 999px;
+            font-weight: 700;
+            padding: 0.8rem 1.15rem;
+        }
+
+        .nav-pills .nav-link.active {
+            background: linear-gradient(135deg, var(--primary), #4f8aff);
+        }
+
+        .month-controls .btn {
+            border-radius: 999px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 0.9rem;
+        }
+
+        .day-header {
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.78rem;
+            color: var(--muted);
+            font-weight: 800;
+            text-align: center;
+            padding-bottom: 0.35rem;
+        }
+
+        .day-cell {
+            min-height: 162px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            padding: 0.85rem;
+            background: rgba(255, 255, 255, 0.94);
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        .day-cell:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 26px rgba(15, 98, 254, 0.08);
+        }
+
+        .day-cell.weekend {
+            background: linear-gradient(180deg, #fffdf4 0%, var(--weekend) 100%);
+            border-color: var(--weekend-border);
+        }
+
+        .day-cell.holiday {
+            background: linear-gradient(180deg, #fffef8 0%, var(--holiday) 100%);
+            border-color: var(--holiday-border);
+        }
+
+        .day-cell.empty {
+            background: rgba(243, 247, 251, 0.78);
+            border-style: dashed;
+            border-color: #d9e4f0;
+        }
+
+        .day-number {
+            font-size: 1.08rem;
+            font-weight: 800;
+            color: #102033;
+        }
+
+        .weekday-pill {
+            font-size: 0.73rem;
+            padding: 0.18rem 0.55rem;
+            border-radius: 999px;
+            background: rgba(15, 98, 254, 0.09);
+            color: var(--primary-deep);
+            font-weight: 800;
+        }
+
+        .holiday-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            width: fit-content;
+            border-radius: 999px;
+            background: #fff4c2;
+            color: #7a5600;
+            font-weight: 800;
+            font-size: 0.78rem;
+            padding: 0.33rem 0.75rem;
+            border: 1px solid #f3d76b;
+        }
+
+        .entry-chip {
+            border-radius: 16px;
+            background: #fff;
+            border: 1px solid rgba(15, 98, 254, 0.12);
+            padding: 0.58rem 0.7rem;
+            box-shadow: 0 8px 20px rgba(15, 98, 254, 0.08);
+        }
+
+        .entry-chip .area-badge {
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+        }
+
+        .entry-chip .turno {
+            font-size: 0.86rem;
+            color: #1d2d42;
+            font-weight: 700;
+        }
+
+        .entry-chip .tecnico {
+            font-size: 0.85rem;
+            color: var(--primary-deep);
+            font-weight: 800;
+        }
+
+        .weekend-card {
+            border-left: 4px solid var(--primary);
+        }
+
+        .empty-state {
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 991.98px) {
+            .calendar-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .calendar-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .day-cell {
+                min-height: 134px;
+            }
+        }
+    </style>
 </head>
 <body class="bg-light">
-    <div class="container py-4">
-        <header class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="h3 mb-0 text-primary">Plantão Técnico GTD</h1>
-            <a href="/login" class="btn btn-outline-secondary btn-sm">Área Restrita</a>
-        </header>
+    <div class="container py-4 page-shell">
+        <div class="hero-card text-white p-4 p-md-5 mb-4">
+            <div class="row align-items-center g-3">
+                <div class="col-lg-8">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <span class="hero-pill px-3 py-1 small fw-semibold">Sistema central de escala</span>
+                        <span class="hero-pill px-3 py-1 small fw-semibold">Feriados e inatividade</span>
+                        <span class="hero-pill px-3 py-1 small fw-semibold">Calendário mensal limpo</span>
+                    </div>
+                    <h1 class="system-title h2 mb-2">Plantão Técnico GTD</h1>
+                    <p class="mb-0 text-white-50 lead">Visualize o mês com clareza, veja feriados destacados e acompanhe todos os plantões com o RE e o horário no calendário.</p>
+                </div>
+                <div class="col-lg-4">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="summary-card p-3 h-100">
+                                <small>Mês atual</small>
+                                <div class="h5 mb-0 mt-2 text-primary">{{ mes_ano }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="summary-card p-3 h-100">
+                                <small>Próximo fim de semana</small>
+                                <div class="h5 mb-0 mt-2 text-primary">{{ fds|length }} plantões</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div>
+                <p class="text-muted mb-1 small">Painel principal</p>
+                <h2 class="h4 mb-0">Visão geral da escala</h2>
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <a href="/login" class="btn btn-outline-secondary btn-sm">Área Restrita</a>
+                <div class="btn-group month-controls" role="group" aria-label="Navegação de meses">
+                    <a href="/?ano={{ prev_month.year }}&mes={{ prev_month.month }}" class="btn btn-outline-secondary btn-sm">‹ Mês anterior</a>
+                    <a href="/" class="btn btn-primary btn-sm">Hoje</a>
+                    <a href="/?ano={{ next_month.year }}&mes={{ next_month.month }}" class="btn btn-outline-secondary btn-sm">Próximo mês ›</a>
+                </div>
+            </div>
+        </div>
 
         <nav class="nav nav-pills nav-justified mb-4" id="pills-tab" role="tablist">
             <button class="nav-link active me-1" id="fds-tab" data-bs-toggle="pill" data-bs-target="#fds" type="button" role="tab">Próximo FDS</button>
             <button class="nav-link" id="mensal-tab" data-bs-toggle="pill" data-bs-target="#mensal" type="button" role="tab">Escala Mensal ({{ mes_ano }})</button>
         </nav>
 
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-            <div>
-                <div class="text-muted small">Visualizando</div>
-                <h2 class="h5 mb-0 text-primary">{{ mes_ano }}</h2>
-            </div>
-            <div class="btn-group" role="group" aria-label="Navegação de meses">
-                <a href="/?ano={{ prev_month.year }}&mes={{ prev_month.month }}" class="btn btn-outline-secondary btn-sm">‹ Mês anterior</a>
-                <a href="/" class="btn btn-outline-primary btn-sm">Hoje</a>
-                <a href="/?ano={{ next_month.year }}&mes={{ next_month.month }}" class="btn btn-outline-secondary btn-sm">Próximo mês ›</a>
-            </div>
-        </div>
-
         <div class="tab-content" id="pills-tabContent">
-            <!-- ABA PROXIMO FIM DE SEMANA -->
             <div class="tab-pane fade show active" id="fds" role="tabpanel">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-primary text-white font-weight-bold">Plantão do Próximo Final de Semana</div>
-                    <div class="list-group list-group-flush">
+                <div class="dashboard-card card shadow-sm">
+                    <div class="card-header bg-primary text-white">Plantão do Próximo Final de Semana</div>
+                    <div class="card-body p-0">
                         {% if not fds %}
-                            <div class="list-group-item text-muted text-center py-4">Nenhuma escala cadastrada para este final de semana.</div>
-                        {% endif %}
-                        {% for r in fds %}
-                        <div class="list-group-item p-3">
-                            <div class="d-flex w-100 justify-content-between mb-1">
-                                <h5 class="mb-1 text-dark font-weight-bold">{{ r.data_formatada }}</h5>
-                                <span class="badge bg-secondary">{{ r.area }}</span>
+                            <div class="p-4 text-center empty-state">Nenhuma escala cadastrada para este final de semana.</div>
+                        {% else %}
+                            <div class="row g-0">
+                                {% for r in fds %}
+                                <div class="col-md-6 weekend-card">
+                                    <div class="p-4 border-bottom border-end">
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div>
+                                                <p class="text-muted small mb-1">Data</p>
+                                                <h3 class="h5 mb-0">{{ r.data_formatada }}</h3>
+                                            </div>
+                                            <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-2">{{ r.area }}</span>
+                                        </div>
+                                        <p class="mb-2 text-muted">Turno: <strong class="text-dark">{{ r.turno }}</strong></p>
+                                        <div class="entry-chip mt-2">
+                                            <div class="text-primary fw-semibold">{{ r.tecnico_nome }}</div>
+                                            <div class="small text-muted mt-1">RE {{ r.tecnico_re }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
                             </div>
-                            <p class="mb-1 text-muted">Turno: <strong>{{ r.turno }}</strong></p>
-                            <small class="text-primary font-weight-bold">Téc: {{ r.tecnico_nome }} (RE {{ r.tecnico_re }})</small>
-                        </div>
-                        {% endfor %}
+                        {% endif %}
                     </div>
                 </div>
             </div>
 
-            <!-- ABA ESCALA MENSAL -->
             <div class="tab-pane fade" id="mensal" role="tabpanel">
-                <div class="card shadow-sm">
+                <div class="dashboard-card card shadow-sm">
                     <div class="card-header bg-dark text-white">Calendário Mensal Completo</div>
                     <div class="card-body">
-                        <div class="row text-center fw-semibold text-uppercase small text-muted mb-2">
-                            <div class="col">Dom</div>
-                            <div class="col">Seg</div>
-                            <div class="col">Ter</div>
-                            <div class="col">Qua</div>
-                            <div class="col">Qui</div>
-                            <div class="col">Sex</div>
-                            <div class="col">Sab</div>
-                        </div>
-
-                        <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-7 g-2">
-                            {% for cell in calendar_days %}
-                            <div class="col">
-                                {% if cell.empty %}
-                                <div class="border rounded p-2 bg-light text-muted" style="min-height: 140px;">
-                                    <div class="small">—</div>
-                                </div>
-                                {% else %}
-                                <div class="border rounded p-2 h-100 {% if cell.is_weekend %}bg-warning bg-opacity-10{% else %}bg-white{% endif %}" style="min-height: 140px;">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <span class="fw-bold">{{ cell.day }}</span>
-                                        <span class="badge bg-light text-dark small">{{ cell.date.strftime('%a') }}</span>
-                                    </div>
-
-                                    {% if cell.entries %}
-                                        {% for entry in cell.entries %}
-                                        <div class="mb-2">
-                                            <span class="badge bg-secondary mb-1">{{ entry.area }}</span>
-                                            <div class="small text-dark">{{ entry.turno }}</div>
-                                            <div class="small text-primary fw-semibold">{{ entry.tecnico_nome }}</div>
-                                        </div>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-bordered align-middle text-center" style="background: #fff;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 7%">Turno</th>
+                                        <th style="width: 13%">Domingo</th>
+                                        <th style="width: 13%">Segunda</th>
+                                        <th style="width: 13%">Terça</th>
+                                        <th style="width: 13%">Quarta</th>
+                                        <th style="width: 13%">Quinta</th>
+                                        <th style="width: 13%">Sexta</th>
+                                        <th style="width: 13%">Sábado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% set dias_mes = calendar_days|selectattr('empty', 'equalto', False)|list %}
+                                    {% set dias_por_semana = [dias_mes[i:i+7] for i in range(0, dias_mes|length, 7)] %}
+                                    {% for turno in ['Manhã', 'Tarde'] %}
+                                    <tr>
+                                        <th class="bg-light">{{ turno }}</th>
+                                        {% for semana in dias_por_semana %}
+                                            {% for cell in semana %}
+                                                <td style="vertical-align: top; min-width: 110px; background: {% if cell.is_holiday %}#fff8df{% elif cell.is_weekend %}#fff5db{% else %}#fff{% endif %};">
+                                                    <div class="fw-bold small mb-1">{{ cell.day }}</div>
+                                                    {% for entry in cell.entries %}
+                                                        {% if (turno == 'Manhã' and '08' in entry.turno) or (turno == 'Tarde' and '17' in entry.turno) %}
+                                                            <div class="mb-1 p-1 rounded" style="background: #eaf2ff;">
+                                                                <span class="fw-semibold">{{ entry.tecnico_nome }}</span><br>
+                                                                <span class="text-muted small">RE {{ entry.tecnico_re }}</span><br>
+                                                                <span class="badge bg-primary-subtle text-primary area-badge">{{ entry.area }}</span>
+                                                            </div>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                    {% if cell.is_holiday %}
+                                                        <span class="badge bg-warning text-dark mt-1">Feriado</span>
+                                                    {% endif %}
+                                                </td>
+                                            {% endfor %}
+                                            {% break %} {# só uma linha por semana por turno #}
                                         {% endfor %}
-                                    {% else %}
-                                        <div class="small text-muted">Sem escala</div>
-                                    {% endif %}
-                                </div>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
+                        <!-- FIM NOVO CALENDÁRIO MENSAL EM GRADE -->
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
