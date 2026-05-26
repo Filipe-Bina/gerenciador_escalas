@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
@@ -20,7 +20,6 @@
           {% endif %}
         {% endwith %}
 
-        <!-- Bloco para Gerar Nova Escala -->
         <div class="card p-4 mb-4 shadow-sm">
             <h4 class="h5 mb-3 text-secondary">Gerar Nova Escala Automática Inteligente</h4>
             <form method="POST" class="row g-3 align-items-end">
@@ -47,7 +46,122 @@
             </form>
         </div>
 
-        <!-- Tabela para Edições Manuais Rápidas -->
+        <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+                <div class="card p-4 shadow-sm h-100">
+                    <h4 class="h5 mb-3 text-secondary">Adicionar Feriado Manual</h4>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="add_holiday">
+                        <div class="mb-3">
+                            <label class="form-label">Data do feriado</label>
+                            <input type="date" name="holiday_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descrição</label>
+                            <input type="text" name="holiday_description" class="form-control" placeholder="Ex.: Feriado municipal" maxlength="200">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Salvar feriado</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card p-4 shadow-sm h-100">
+                    <h4 class="h5 mb-3 text-secondary">Marcar Técnico Como Inativo</h4>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="add_inatividade">
+                        <div class="mb-3">
+                            <label class="form-label">Técnicos</label>
+                            <select name="tecnico_re" class="form-select" multiple size="8" required>
+                                {% for t in tecnicos %}
+                                <option value="{{ t.re }}">{{ t.nome }} ({{ t.area }})</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Segure Ctrl/Cmd para selecionar mais de um técnico.</div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Data inicial</label>
+                                <input type="date" name="data_inicio" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Data final</label>
+                                <input type="date" name="data_fim" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Motivo</label>
+                                <select name="motivo" class="form-select" required>
+                                    <option value="">Selecione</option>
+                                    <option value="Atestado">Atestado</option>
+                                    <option value="Folga">Folga</option>
+                                    <option value="Férias">Férias</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-warning mt-3">Salvar inatividade</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-secondary text-white">Feriados Manuais Cadastrados</div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Descrição</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if feriados_manuais %}
+                            {% for feriado in feriados_manuais %}
+                            <tr>
+                                <td><strong>{{ feriado.data_formatada }}</strong></td>
+                                <td>{{ feriado.descricao }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="2" class="text-center text-muted py-3">Nenhum feriado manual cadastrado.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-dark text-white">Técnicos Inativos</div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Técnico</th>
+                            <th>Período</th>
+                            <th>Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if tecnicos_inativos %}
+                            {% for item in tecnicos_inativos %}
+                            <tr>
+                                <td>{{ item.tecnico_nome }} ({{ item.tecnico_re }})</td>
+                                <td>{{ item.data_inicio_formatada }} até {{ item.data_fim_formatada }}</td>
+                                <td>{{ item.motivo }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-3">Nenhum técnico marcado como inativo.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card shadow-sm">
             <div class="card-header bg-dark text-white">Editar Registros Gerados</div>
             <div class="table-responsive">

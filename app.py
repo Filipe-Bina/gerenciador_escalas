@@ -61,10 +61,30 @@ def load_school_holidays(ano):
     return {item.strip() for item in valor.split(",") if item.strip() and item.strip().startswith(f"{ano}-")}
 
 
+def load_manual_holidays_for_year(ano):
+    try:
+        init_db()
+    except Exception:
+        return set()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT data FROM feriados_manuais WHERE EXTRACT(YEAR FROM data) = %s",
+        (ano,),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return {row["data"].strftime("%Y-%m-%d") for row in rows}
+
+
 def load_holidays_for_year(ano):
     feriados = fetch_public_holidays(ano)
     feriados.update(SP_STATE_HOLIDAYS.get(ano, set()))
     feriados.update(load_school_holidays(ano))
+    feriados.update(load_manual_holidays_for_year(ano))
     return feriados
 
 
@@ -74,6 +94,27 @@ def is_plantao_day(data, feriados=None):
 
     data_str = data.strftime("%Y-%m-%d")
     return data.weekday() >= 5 or data_str in feriados
+
+
+def load_inactive_tecnicos_for_period(start_date, end_date):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT tecnico_re, data_inicio, data_fim FROM tecnico_inativo WHERE data_inicio <= %s AND data_fim >= %s",
+        (end_date, start_date),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    inactive_by_date = {}
+    for row in rows:
+        current_date = row["data_inicio"]
+        while current_date <= row["data_fim"]:
+            inactive_by_date.setdefault(current_date.strftime("%Y-%m-%d"), set()).add(row["tecnico_re"])
+            current_date += datetime.timedelta(days=1)
+
+    return inactive_by_date
 
 
 def resolve_dashboard_month():
@@ -183,87 +224,118 @@ def init_db():
             UNIQUE(data, area, turno)
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS feriados_manuais (
+            id SERIAL PRIMARY KEY,
+            data DATE NOT NULL UNIQUE,
+            descricao VARCHAR(200) NOT NULL
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tecnico_inativo (
+            id SERIAL PRIMARY KEY,
+            tecnico_re VARCHAR(20) NOT NULL,
+            tecnico_nome VARCHAR(100) NOT NULL,
+            data_inicio DATE NOT NULL,
+            data_fim DATE NOT NULL,
+            motivo VARCHAR(30) NOT NULL,
+            UNIQUE(tecnico_re, data_inicio, data_fim, motivo)
+        )
+    ''')
     conn.commit()
     cursor.close()
     conn.close()
 
-def obter_proximo_tecnico(area, contagem_turnos, tecnico_excluir=None):
-    """Retorna o técnico com menos turnos na área, excluindo opcionalmente um técnico específico"""
+
+def obter_proximo_tecnico(area, contagem_turnos, tecnico_excluir=None, inactive_re=None, data=None):
+    """Retorna o técnico com menos turnos na área, excluindo opcionalmente um técnico específico e técnicos inativos."""
     tecs_area = [t for t in TECNICOS if t['area'] == area]
-    
+
     if tecnico_excluir:
         tecs_area = [t for t in tecs_area if t['re'] != tecnico_excluir]
-    
+
+    if inactive_re:
+        tecs_area = [t for t in tecs_area if t['re'] not in inactive_re]
+
     if not tecs_area:
-        tecs_area = [t for t in TECNICOS if t['area'] == area]
-    
+        return None
+
     tecs_area.sort(key=lambda t: contagem_turnos.get(t['re'], 0))
     return tecs_area[0]
 
+
 def gerar_escala_automatica(ano, mes):
+    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     primeiro_dia = f"{ano}-{mes:02d}-01"
     ultimo_dia = f"{ano}-{mes:02d}-{monthrange(ano, mes)[1]}"
-    
+
     cursor.execute("DELETE FROM escala WHERE data BETWEEN %s AND %s", (primeiro_dia, ultimo_dia))
-    
+
     cursor.execute("SELECT tecnico_re, COUNT(*) FROM escala GROUP BY tecnico_re")
     contagem_turnos = dict(cursor.fetchall())
-    
+
     num_dias = monthrange(ano, mes)[1]
     feriados_do_ano = load_holidays_for_year(ano)
+    inactive_by_date = load_inactive_tecnicos_for_period(primeiro_dia, ultimo_dia)
 
     for dia in range(1, num_dias + 1):
         data_atual = datetime.date(ano, mes, dia)
         data_str = data_atual.strftime("%Y-%m-%d")
+        inactive_re = inactive_by_date.get(data_str, set())
 
         is_plantao = is_plantao_day(data_atual, feriados_do_ano)
 
         if is_plantao:
             # SJC
-            t1_sjc = obter_proximo_tecnico("SJC", contagem_turnos)
-            contagem_turnos[t1_sjc['re']] = contagem_turnos.get(t1_sjc['re'], 0) + 1
-            cursor.execute(
-                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                (data_str, "SJC", "08:00 às 17:00", t1_sjc['re'], t1_sjc['nome'])
-            )
-            
-            t2_sjc = obter_proximo_tecnico("SJC", contagem_turnos, tecnico_excluir=t1_sjc['re'])
-            contagem_turnos[t2_sjc['re']] = contagem_turnos.get(t2_sjc['re'], 0) + 1
-            cursor.execute(
-                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                (data_str, "SJC", "17:00 às 06:00", t2_sjc['re'], t2_sjc['nome'])
-            )
+            t1_sjc = obter_proximo_tecnico("SJC", contagem_turnos, inactive_re=inactive_re)
+            if t1_sjc:
+                contagem_turnos[t1_sjc['re']] = contagem_turnos.get(t1_sjc['re'], 0) + 1
+                cursor.execute(
+                    "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                    (data_str, "SJC", "08:00 às 17:00", t1_sjc['re'], t1_sjc['nome'])
+                )
+
+                t2_sjc = obter_proximo_tecnico("SJC", contagem_turnos, tecnico_excluir=t1_sjc['re'], inactive_re=inactive_re)
+                if t2_sjc:
+                    contagem_turnos[t2_sjc['re']] = contagem_turnos.get(t2_sjc['re'], 0) + 1
+                    cursor.execute(
+                        "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                        "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                        (data_str, "SJC", "17:00 às 06:00", t2_sjc['re'], t2_sjc['nome'])
+                    )
 
             # TAUBATÉ
-            t1_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos)
-            contagem_turnos[t1_taub['re']] = contagem_turnos.get(t1_taub['re'], 0) + 1
-            cursor.execute(
-                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                (data_str, "TAUBATE", "08:00 às 17:00", t1_taub['re'], t1_taub['nome'])
-            )
-            
-            t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, tecnico_excluir=t1_taub['re'])
-            contagem_turnos[t2_taub['re']] = contagem_turnos.get(t2_taub['re'], 0) + 1
-            cursor.execute(
-                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                (data_str, "TAUBATE", "17:00 às 06:00", t2_taub['re'], t2_taub['nome'])
-            )
+            t1_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, inactive_re=inactive_re)
+            if t1_taub:
+                contagem_turnos[t1_taub['re']] = contagem_turnos.get(t1_taub['re'], 0) + 1
+                cursor.execute(
+                    "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                    (data_str, "TAUBATE", "08:00 às 17:00", t1_taub['re'], t1_taub['nome'])
+                )
+
+                t2_taub = obter_proximo_tecnico("TAUBATE", contagem_turnos, tecnico_excluir=t1_taub['re'], inactive_re=inactive_re)
+                if t2_taub:
+                    contagem_turnos[t2_taub['re']] = contagem_turnos.get(t2_taub['re'], 0) + 1
+                    cursor.execute(
+                        "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                        "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                        (data_str, "TAUBATE", "17:00 às 06:00", t2_taub['re'], t2_taub['nome'])
+                    )
 
             # LITORAL
-            t_lit = obter_proximo_tecnico("LITORAL", contagem_turnos)
-            contagem_turnos[t_lit['re']] = contagem_turnos.get(t_lit['re'], 0) + 1
-            cursor.execute(
-                "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
-                "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
-                (data_str, "LITORAL", "08:00 às 17:00", t_lit['re'], t_lit['nome'])
-            )
+            t_lit = obter_proximo_tecnico("LITORAL", contagem_turnos, inactive_re=inactive_re)
+            if t_lit:
+                contagem_turnos[t_lit['re']] = contagem_turnos.get(t_lit['re'], 0) + 1
+                cursor.execute(
+                    "INSERT INTO escala (data, area, turno, tecnico_re, tecnico_nome) VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT (data, area, turno) DO UPDATE SET tecnico_re = EXCLUDED.tecnico_re, tecnico_nome = EXCLUDED.tecnico_nome",
+                    (data_str, "LITORAL", "08:00 às 17:00", t_lit['re'], t_lit['nome'])
+                )
 
     conn.commit()
     cursor.close()
@@ -343,34 +415,75 @@ def logout():
 def admin():
     if 'admin' not in session:
         return redirect(url_for('login'))
-        
+
+    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     if request.method == 'POST':
         acao = request.form.get('action')
-        
+
         if acao == 'gerar':
             mes = int(request.form.get('mes'))
             ano = int(request.form.get('ano'))
             gerar_escala_automatica(ano, mes)
             flash(f'Escala de {mes:02d}/{ano} gerada com sucesso!')
-            
+
         elif acao == 'editar':
             row_id = request.form.get('id')
             novo_re = request.form.get('tecnico_re')
             nome_mapped = next((t['nome'] for t in TECNICOS if t['re'] == novo_re), "")
-            
+
             cursor.execute("UPDATE escala SET tecnico_re = %s, tecnico_nome = %s WHERE id = %s", (novo_re, nome_mapped, row_id))
             conn.commit()
             flash('Alteração manual efetuada com sucesso!')
-            
+
+        elif acao == 'add_holiday':
+            holiday_date = request.form.get('holiday_date')
+            holiday_description = request.form.get('holiday_description', '').strip()
+
+            if not holiday_date:
+                flash('Informe a data do feriado manual.')
+            else:
+                cursor.execute(
+                    "INSERT INTO feriados_manuais (data, descricao) VALUES (%s, %s) ON CONFLICT (data) DO UPDATE SET descricao = EXCLUDED.descricao",
+                    (holiday_date, holiday_description or 'Feriado manual'),
+                )
+                conn.commit()
+                flash('Feriado manual salvo com sucesso!')
+
+        elif acao == 'add_inatividade':
+            selected_tecnicos = request.form.getlist('tecnico_re')
+            data_inicio = request.form.get('data_inicio')
+            data_fim = request.form.get('data_fim')
+            motivo = request.form.get('motivo')
+
+            if not selected_tecnicos or not data_inicio or not data_fim or not motivo:
+                flash('Preencha técnico, período e motivo para registrar a inatividade.')
+            else:
+                for tecnico_re in selected_tecnicos:
+                    tecnico = next((t for t in TECNICOS if t['re'] == tecnico_re), None)
+                    if not tecnico:
+                        continue
+                    cursor.execute(
+                        "INSERT INTO tecnico_inativo (tecnico_re, tecnico_nome, data_inicio, data_fim, motivo) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (tecnico_re, data_inicio, data_fim, motivo) DO NOTHING",
+                        (tecnico_re, tecnico['nome'], data_inicio, data_fim, motivo),
+                    )
+                conn.commit()
+                flash('Técnicos marcados como inativos para o período selecionado!')
+
     cursor.execute("SELECT id, to_char(data, 'DD/MM/YYYY') as data_formatada, area, turno, tecnico_re, tecnico_nome FROM escala ORDER BY data DESC, area ASC, turno ASC")
     escala_total = cursor.fetchall()
+    cursor.execute("SELECT to_char(data, 'DD/MM/YYYY') as data_formatada, descricao FROM feriados_manuais ORDER BY data ASC")
+    feriados_manuais = cursor.fetchall()
+    cursor.execute(
+        "SELECT to_char(data_inicio, 'DD/MM/YYYY') as data_inicio_formatada, to_char(data_fim, 'DD/MM/YYYY') as data_fim_formatada, tecnico_re, tecnico_nome, motivo FROM tecnico_inativo ORDER BY data_inicio ASC, tecnico_nome ASC"
+    )
+    tecnicos_inativos = cursor.fetchall()
     cursor.close()
     conn.close()
-    
-    return render_template('admin.html', escala=escala_total, tecnicos=TECNICOS)
+
+    return render_template('admin.html', escala=escala_total, tecnicos=TECNICOS, feriados_manuais=feriados_manuais, tecnicos_inativos=tecnicos_inativos)
 
 if __name__ == '__main__':
     init_db()
