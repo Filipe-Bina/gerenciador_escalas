@@ -329,52 +329,54 @@
                 <div class="dashboard-card card shadow-sm">
                     <div class="card-header bg-dark text-white">Calendário Mensal Completo</div>
                     <div class="card-body">
-                        <div class="table-responsive mb-3">
-                            <table class="table table-bordered align-middle text-center" style="background: #fff;">
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <span class="badge bg-warning text-dark">Feriado</span>
+                            <span class="badge bg-light text-dark border">Fim de semana</span>
+                            <span class="badge bg-primary-subtle text-primary">Plantão</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle text-center mb-0" style="background: #fff;">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 7%">Turno</th>
-                                        <th style="width: 13%">Domingo</th>
-                                        <th style="width: 13%">Segunda</th>
-                                        <th style="width: 13%">Terça</th>
-                                        <th style="width: 13%">Quarta</th>
-                                        <th style="width: 13%">Quinta</th>
-                                        <th style="width: 13%">Sexta</th>
-                                        <th style="width: 13%">Sábado</th>
+                                        <th>Domingo</th>
+                                        <th>Segunda</th>
+                                        <th>Terça</th>
+                                        <th>Quarta</th>
+                                        <th>Quinta</th>
+                                        <th>Sexta</th>
+                                        <th>Sábado</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% set dias_mes = calendar_days|selectattr('empty', 'equalto', False)|list %}
-                                    {% set dias_por_semana = [dias_mes[i:i+7] for i in range(0, dias_mes|length, 7)] %}
-                                    {% for turno in ['Manhã', 'Tarde'] %}
+                                    {% for week in calendar_weeks %}
                                     <tr>
-                                        <th class="bg-light">{{ turno }}</th>
-                                        {% for semana in dias_por_semana %}
-                                            {% for cell in semana %}
-                                                <td style="vertical-align: top; min-width: 110px; background: {% if cell.is_holiday %}#fff8df{% elif cell.is_weekend %}#fff5db{% else %}#fff{% endif %};">
-                                                    <div class="fw-bold small mb-1">{{ cell.day }}</div>
+                                        {% for cell in week %}
+                                        <td style="vertical-align: top; min-width: 130px; background: {% if cell.is_holiday %}#fff8df{% elif cell.is_weekend %}#fff5db{% else %}#fff{% endif %};">
+                                            {% if cell.empty %}
+                                                <span class="text-muted small">—</span>
+                                            {% else %}
+                                                <div class="fw-bold small mb-2">{{ cell.day }}</div>
+                                                {% if cell.is_holiday %}
+                                                    <span class="badge bg-warning text-dark mb-2">Feriado</span>
+                                                {% endif %}
+                                                {% if cell.entries %}
                                                     {% for entry in cell.entries %}
-                                                        {% if (turno == 'Manhã' and '08' in entry.turno) or (turno == 'Tarde' and '17' in entry.turno) %}
-                                                            <div class="mb-1 p-1 rounded" style="background: #eaf2ff;">
-                                                                <span class="fw-semibold">{{ entry.tecnico_nome }}</span><br>
-                                                                <span class="text-muted small">RE {{ entry.tecnico_re }}</span><br>
-                                                                <span class="badge bg-primary-subtle text-primary area-badge">{{ entry.area }}</span>
-                                                            </div>
-                                                        {% endif %}
+                                                    <div class="mb-2 p-2 rounded" style="background: rgba(15, 98, 254, 0.08);">
+                                                        <div class="fw-semibold">{{ entry.tecnico_nome }}</div>
+                                                        <div class="small text-muted">RE {{ entry.tecnico_re }}</div>
+                                                        <div class="small text-dark">{{ entry.turno }}</div>
+                                                        <span class="badge bg-primary-subtle text-primary area-badge mt-1">{{ entry.area }}</span>
+                                                    </div>
                                                     {% endfor %}
-                                                    {% if cell.is_holiday %}
-                                                        <span class="badge bg-warning text-dark mt-1">Feriado</span>
-                                                    {% endif %}
-                                                </td>
-                                            {% endfor %}
-                                            {% break %} {# só uma linha por semana por turno #}
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
                                         {% endfor %}
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
-                        <!-- FIM NOVO CALENDÁRIO MENSAL EM GRADE -->
                     </div>
                 </div>
             </div>
