@@ -340,7 +340,7 @@ def login():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 1. Busca o usuário direto na nova tabela 'usuarios' do seu Schema v2.0
+        # Busca o usuário na tabela 'usuarios'
         cursor.execute("SELECT id, username, admin FROM usuarios WHERE username = %s AND password = %s", (user, passwd))
         usuario_valido = cursor.fetchone()
         
@@ -348,11 +348,11 @@ def login():
         conn.close()
         
         if usuario_valido:
-            # 2. Grava explicitamente os dados de controle na sessão do Flask
-            session['admin'] = usuario_valido['username']
-            session['is_admin'] = usuario_valido['admin']
+            # Lendo por índice (0=id, 1=username, 2=admin) para evitar conflito de DictCursor
+            session['admin'] = usuario_valido[1]
+            session['is_admin'] = usuario_valido[2]
             
-            # 3. Força o redirecionamento imediato para a área administrativa
+            # Força o redirecionamento imediato para a área administrativa
             return redirect(url_for('admin'))
             
         flash('Usuário ou senha inválidos!')
