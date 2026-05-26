@@ -1,0 +1,4 @@
+.env
+escalas.db
+__pycache__/
+tests/__pycache__/
