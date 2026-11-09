@@ -5,7 +5,7 @@
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 
-> **EN:** Weekend on-call rotation manager for field-technician teams. Automatically builds a fair monthly schedule across three regions, honouring holidays and time off, with an admin panel for manual adjustments. Covered by a 51-case pytest suite running on GitHub Actions.
+> **EN:** Weekend on-call rotation manager for field-technician teams. Automatically builds a fair monthly schedule across three regions, honouring holidays and time off, with an admin panel for manual adjustments. Covered by a 67-case pytest suite running on GitHub Actions.
 
 Sistema web que gera e publica a escala de plantão de fim de semana e feriados das equipes técnicas de **SJC**, **Taubaté** e **Litoral**. Está em uso pela operação.
 
@@ -37,7 +37,7 @@ As tabelas são criadas automaticamente na primeira execução.
 
 ## Testes
 
-A suíte tem **51 casos** (regras de negócio, integração com o banco e controle de acesso) e roda contra um PostgreSQL real.
+A suíte tem **67 casos** (regras de negócio, integração com o banco e controle de acesso) e roda contra um PostgreSQL real.
 
 ```bash
 pip install -r requirements-dev.txt
@@ -45,7 +45,7 @@ export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/escalas_test
 pytest --cov=app
 ```
 
-Resultado atual: **48 aprovados · 3 defeitos abertos registrados · 86% de cobertura de `app.py`**. Os testes já encontraram e ajudaram a corrigir uma falha de controle de acesso e um erro que travava a geração da escala.
+Resultado atual: **67 aprovados · 87% de cobertura de `app.py`**. A suíte encontrou 7 defeitos, todos corrigidos, entre eles uma falha de controle de acesso no painel admin e um erro que travava a geração da escala.
 
 O plano de testes, os casos de teste e os relatórios de defeitos estão em **[TEST_PLAN.md](TEST_PLAN.md)**.
 

@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Sistema** | Gerenciador de Escalas de plantão de fim de semana (Flask + PostgreSQL) |
-| **Versão testada** | Release 1.8.3 (`master`) + correções de BUG-001, 002 e 006 |
+| **Versão testada** | Release 1.8.3 (`master`) + correções de BUG-001 a BUG-007 |
 | **Responsável** | Filipe Santos |
 | **Data** | 09/11/2026 |
 | **Ferramentas** | pytest, pytest-cov, Flask test client, PostgreSQL 16, GitHub Actions |
-| **Resultado** | 51 casos · 48 aprovados · 3 defeitos abertos registrados · 3 defeitos corrigidos · cobertura de `app.py`: 86% |
+| **Resultado** | 67 casos · 67 aprovados · 7 defeitos encontrados e corrigidos · cobertura de `app.py`: 87% |
 
 ---
 
@@ -66,7 +66,7 @@ o relatório JUnit e a cobertura HTML como artefato da execução.
 
 ## 5. Casos de teste
 
-Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito · ❌ defeito aberto (teste marcado como falha esperada)
+Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito encontrado pelo teste
 
 ### 5.1 Autenticação e acesso — `tests/test_auth.py`
 
@@ -93,7 +93,9 @@ Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito · ❌ defeit
 | CT-DSH-05 | Parâmetros não numéricos (`mes=abc`) | Página carrega sem erro | ✅ |
 | CT-DSH-06 | Links de mês anterior/próximo: jan, dez e meio do ano (3 variações) | Virada de ano correta | ✅ |
 | CT-DSH-07 | Escala gerada aparece no dashboard | Turnos exibidos | ✅ |
-| CT-DSH-08 | Consultar janeiro/2031 | Título "Janeiro/2031" | ❌ BUG-003 |
+| CT-DSH-08 | Consultar um ano futuro (ano atual + 5) | Título com o ano pedido | 🔧 BUG-003 |
+| CT-DSH-09 | Ano absurdo: 1900, 9999, -1 (3 variações) | Volta para o ano atual sem erro | ✅ |
+| CT-DSH-10 | Usuário sem permissão tenta abrir `/admin` | Aviso "Acesso restrito" exibido no dashboard | ✅ |
 
 ### 5.3 Regras do algoritmo de escala — `tests/test_escala.py`
 
@@ -129,8 +131,11 @@ Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito · ❌ defeit
 | CT-ADM-07 | Remover inatividade | Registro excluído | ✅ |
 | CT-ADM-08 | Troca manual de técnico em um plantão | Plantão passa para o novo técnico | ✅ |
 | CT-ADM-09 | Troca manual com RE inexistente | Mensagem de erro; plantão inalterado | ✅ |
-| CT-ADM-10 | Inatividade com data final antes da inicial | Rejeitada | ❌ BUG-004 |
-| CT-ADM-11 | Gerar escala com mês não numérico | Mensagem de erro, sem erro 500 | ❌ BUG-005 |
+| CT-ADM-10 | Inatividade com data final antes da inicial | Rejeitada com mensagem | 🔧 BUG-004 |
+| CT-ADM-11 | Gerar escala com mês/ano inválido: texto, 13, 0, ano fora da janela, vazio (6 variações) | Mensagem de erro, nada gerado, sem erro 500 | 🔧 BUG-005 |
+| CT-ADM-12 | Inatividade sem data de início, sem data de fim ou em formato inválido (3 variações) | Rejeitada com mensagem | ✅ |
+| CT-ADM-13 | Inatividade de um único dia (início = fim) | Aceita | ✅ |
+| CT-ADM-14 | Painel com `mes`/`ano` inválidos na URL (3 variações) | Painel abre no mês atual, sem erro | 🔧 BUG-007 |
 
 ---
 
@@ -141,9 +146,10 @@ Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito · ❌ defeit
 | BUG-001 | 🔴 Alta (segurança) | Usuário sem permissão acessava o painel admin | CT-AUT-07 | ✅ Corrigido |
 | BUG-006 | 🔴 Alta | Uma área sem técnicos ativos impedia a geração da escala inteira | CT-ESC-15 | ✅ Corrigido |
 | BUG-002 | 🟠 Média | Dashboard não reconhecia o usuário logado | CT-AUT-08 | ✅ Corrigido |
-| BUG-005 | 🟠 Média | Mês/ano inválido no formulário causa erro 500 | CT-ADM-11 | Aberto |
-| BUG-004 | 🟡 Baixa | Período de inatividade invertido é aceito | CT-ADM-10 | Aberto |
-| BUG-003 | 🟡 Baixa | Dashboard limitado aos anos 2020–2030 | CT-DSH-08 | Aberto |
+| BUG-005 | 🟠 Média | Mês/ano inválido no formulário causava erro 500 | CT-ADM-11 | ✅ Corrigido |
+| BUG-007 | 🟠 Média | Painel admin com `mes=13` na URL causava erro 500 | CT-ADM-14 | ✅ Corrigido |
+| BUG-004 | 🟡 Baixa | Período de inatividade invertido era aceito | CT-ADM-10 | ✅ Corrigido |
+| BUG-003 | 🟡 Baixa | Dashboard limitado aos anos 2020–2030 | CT-DSH-08 | ✅ Corrigido |
 
 ### BUG-001 — Painel admin acessível sem permissão de administrador ✅ Corrigido
 - **Causa:** a rota `/admin` só verificava se havia uma chave `admin` na sessão, gravada para qualquer usuário válido.
@@ -161,24 +167,33 @@ Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito · ❌ defeit
 - **Correção:** chaves de sessão padronizadas junto com o BUG-001.
 - **Regressão:** CT-AUT-08.
 
-### BUG-005 — Erro 500 com mês/ano inválido ao gerar escala
+### BUG-005 — Erro 500 com mês/ano inválido ao gerar escala ✅ Corrigido
 - **Passos:** enviar o formulário "Gerar escala" com `mes=abc`.
-- **Obtido:** `ValueError` em `int(request.form.get("mes"))`, fora do `try`.
-- **Sugestão:** usar `request.form.get("mes", type=int)` e validar o intervalo 1–12.
+- **Obtido antes da correção:** `ValueError` em `int(request.form.get("mes"))`, fora do `try`, e erro 500.
+- **Correção:** leitura com `request.form.get("mes", type=int)` e validação de mês (1–12) e ano; valores inválidos mostram uma mensagem e nada é gerado.
+- **Regressão:** CT-ADM-11 (6 variações).
 
-### BUG-004 — Inatividade com período invertido
+### BUG-007 — Painel admin com mês inválido na URL ✅ Corrigido
+- **Encontrado por:** CT-ADM-14, escrito durante a correção do BUG-005.
+- **Passos:** abrir `/admin?mes=13`.
+- **Obtido antes da correção:** erro 500 ao calcular o "próximo mês" (`date(ano, 14, 1)`).
+- **Correção:** o painel usa a mesma validação de mês e ano do dashboard.
+
+### BUG-004 — Inatividade com período invertido ✅ Corrigido
 - **Passos:** registrar inatividade com início 20/03 e fim 01/03.
-- **Obtido:** registro salvo; ele nunca bloqueia nenhum dia e confunde quem consulta.
-- **Sugestão:** validar `data_fim >= data_inicio` no servidor (e no formulário).
+- **Obtido antes da correção:** registro salvo; ele nunca bloqueava nenhum dia e confundia quem consultava.
+- **Correção:** o servidor exige as duas datas em formato válido e `data_fim >= data_inicio`; caso contrário, mostra uma mensagem e não grava nada.
+- **Regressão:** CT-ADM-10, CT-ADM-12 e CT-ADM-13.
 
-### BUG-003 — Anos depois de 2030 são ignorados
+### BUG-003 — Anos depois de 2030 eram ignorados ✅ Corrigido
 - **Passos:** abrir `/?mes=1&ano=2031`.
-- **Obtido:** o ano é trocado silenciosamente pelo ano atual.
-- **Sugestão:** validar um intervalo relativo ao ano atual (ex.: ±5 anos).
+- **Obtido antes da correção:** o ano era trocado silenciosamente pelo ano atual.
+- **Correção:** a validação usa uma janela relativa ao ano atual (10 anos para trás e para frente), que não envelhece.
+- **Regressão:** CT-DSH-08 e CT-DSH-09.
 
 ---
 
-## 7. Riscos e observações (sem teste automatizado falhando)
+## 7. Riscos e observações
 
 - **RISCO-001 — Descanso entre turnos.** O código só impede repetir o *mesmo* turno em dias seguidos. Fazer noturno no sábado (até 06h) e diurno no domingo (08h) não acontece hoje, mas por efeito do rodízio, não de uma regra. O CT-ESC-16 protege contra regressão; o ideal é tornar a regra explícita no algoritmo.
 - **RISCO-002 — Credenciais.** Senhas ficam em texto puro no banco, existe um usuário `admin` criado com senha padrão no código e a `SECRET_KEY` tem um valor padrão no código. Recomendado: hash de senha (`werkzeug.security`), senha do admin trocada em produção e `SECRET_KEY` obrigatória por variável de ambiente.
@@ -188,6 +203,6 @@ Legenda: ✅ aprovado · 🔧 aprovado após correção do defeito · ❌ defeit
 
 ## 8. Próximos passos
 
-1. Corrigir BUG-005, BUG-004 e BUG-003 e remover o `xfail` dos testes correspondentes.
+1. Tratar os riscos RISCO-002 (senhas com hash) e RISCO-003 (dados pessoais fora do código).
 2. Testes E2E com Playwright: login, geração da escala e troca manual pelo navegador.
-3. Cobertura dos templates e mensagens de erro (`flash`).
+3. Tornar explícita no algoritmo a regra de descanso entre turnos (RISCO-001).
