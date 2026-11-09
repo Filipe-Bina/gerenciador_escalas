@@ -57,11 +57,22 @@ def test_ct_dsh_07_escala_gerada_aparece_no_dashboard(client, escala_marco_2026)
     assert "17:00 às 06:00" in html
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG-003: o dashboard só aceita anos entre 2020 e 2030; "
-    "a partir de 2031 qualquer ano informado é trocado pelo ano atual.",
-)
-def test_ct_dsh_08_dashboard_aceita_anos_apos_2030(client):
-    resp = client.get("/?mes=1&ano=2031")
-    assert "Janeiro/2031".encode() in resp.data
+def test_ct_dsh_08_dashboard_aceita_anos_futuros(client):
+    """Regressão do BUG-003 (corrigido): antes, qualquer ano depois de 2030 era ignorado."""
+    ano = date.today().year + 5
+    resp = client.get(f"/?mes=1&ano={ano}")
+    assert f"Janeiro/{ano}".encode() in resp.data
+
+
+@pytest.mark.parametrize("ano", [1900, 9999, -1])
+def test_ct_dsh_09_ano_absurdo_volta_para_o_ano_atual(client, ano):
+    hoje = date.today()
+    resp = client.get(f"/?mes=1&ano={ano}")
+    assert resp.status_code == 200
+    assert f"Janeiro/{hoje.year}".encode() in resp.data
+
+
+def test_ct_dsh_10_aviso_de_acesso_restrito_aparece_no_dashboard(client, usuario_comum):
+    client.post("/login", data=usuario_comum)
+    resp = client.get("/admin", follow_redirects=True)
+    assert "Acesso restrito a administradores".encode() in resp.data

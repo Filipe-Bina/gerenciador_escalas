@@ -90,25 +90,57 @@ def test_ct_adm_09_troca_com_re_inexistente_mostra_erro(admin_client, db):
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG-004: inatividade com data final anterior à inicial é aceita sem validação.",
-)
 def test_ct_adm_10_rejeita_inatividade_com_periodo_invertido(admin_client, db):
+    """Regressão do BUG-004 (corrigido)."""
     re = db("SELECT re FROM tecnicos LIMIT 1")[0]["re"]
-    admin_client.post("/admin", data={
+    resp = admin_client.post("/admin", data={
         "action": "add_inatividade", "tecnico_re": re,
         "data_inicio": "2026-03-20", "data_fim": "2026-03-01", "motivo": "Férias",
-    })
+    }, follow_redirects=True)
+    assert "A data final não pode ser anterior à data inicial".encode() in resp.data
     assert db("SELECT 1 FROM inatividades") == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="BUG-005: mês/ano não numérico no formulário 'Gerar escala' "
-    "derruba a requisição com erro 500 em vez de mostrar uma mensagem.",
+@pytest.mark.parametrize(
+    "inicio,fim",
+    [("", "2026-03-10"), ("2026-03-01", ""), ("01/03/2026", "2026-03-10")],
+    ids=["sem-inicio", "sem-fim", "formato-invalido"],
 )
-def test_ct_adm_11_gerar_com_mes_invalido_nao_retorna_500(admin_client):
-    resp = admin_client.post("/admin", data={"action": "gerar", "mes": "abc", "ano": "2026"})
-    assert resp.status_code != 500
+def test_ct_adm_12_rejeita_inatividade_com_datas_ausentes_ou_invalidas(admin_client, db, inicio, fim):
+    re = db("SELECT re FROM tecnicos LIMIT 1")[0]["re"]
+    resp = admin_client.post("/admin", data={
+        "action": "add_inatividade", "tecnico_re": re,
+        "data_inicio": inicio, "data_fim": fim, "motivo": "Férias",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert "Informe as datas".encode() in resp.data
+    assert db("SELECT 1 FROM inatividades") == []
+
+
+def test_ct_adm_13_inatividade_de_um_unico_dia_e_aceita(admin_client, db):
+    re = db("SELECT re FROM tecnicos LIMIT 1")[0]["re"]
+    admin_client.post("/admin", data={
+        "action": "add_inatividade", "tecnico_re": re,
+        "data_inicio": "2026-03-07", "data_fim": "2026-03-07", "motivo": "Folga",
+    })
+    assert db("SELECT COUNT(*) AS n FROM inatividades")[0]["n"] == 1
+
+
+@pytest.mark.parametrize(
+    "mes,ano",
+    [("abc", "2026"), ("13", "2026"), ("0", "2026"), ("3", "xyz"), ("3", "1900"), ("", "")],
+    ids=["mes-texto", "mes-13", "mes-0", "ano-texto", "ano-fora-da-janela", "vazios"],
+)
+def test_ct_adm_11_gerar_com_mes_ou_ano_invalido_mostra_erro(admin_client, db, mes, ano):
+    """Regressão do BUG-005 (corrigido)."""
+    resp = admin_client.post(
+        "/admin", data={"action": "gerar", "mes": mes, "ano": ano}, follow_redirects=True
+    )
+    assert resp.status_code == 200
+    assert "Mês ou ano inválido".encode() in resp.data
+    assert db("SELECT COUNT(*) AS n FROM fds")[0]["n"] == 0
+
+
+@pytest.mark.parametrize("query", ["mes=13&ano=2026", "mes=abc&ano=abc", "mes=3&ano=1900"])
+def test_ct_adm_14_painel_com_parametros_invalidos_nao_quebra(admin_client, query):
+    assert admin_client.get(f"/admin?{query}").status_code == 200
