@@ -183,6 +183,15 @@
 
 <div class="container py-4">
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="alert alert-{{ 'info' if cat == 'message' else cat }} alert-dismissible fade show shadow-sm" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
+    {% endwith %}
+
     <!-- PRÓXIMO FDS -->
     {% if proximo_fds %}
     <div class="card next-fds-card mb-4">
