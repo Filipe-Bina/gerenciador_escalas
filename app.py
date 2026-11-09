@@ -201,6 +201,27 @@ def is_logged_in():
 def is_admin():
     return bool(session.get("is_admin", False))
 
+ANOS_PERMITIDOS = 10  # janela de anos aceitos, para trás e para frente do ano atual
+
+
+def ano_valido(ano):
+    """Aceita anos dentro de uma janela relativa ao ano atual."""
+    hoje = date.today()
+    return ano is not None and hoje.year - ANOS_PERMITIDOS <= ano <= hoje.year + ANOS_PERMITIDOS
+
+
+def mes_valido(mes):
+    return mes is not None and 1 <= mes <= 12
+
+
+def parse_data(valor):
+    """Converte 'AAAA-MM-DD' em date; devolve None se vazio ou inválido."""
+    try:
+        return datetime.strptime(valor or "", "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def get_tecnicos_ativos():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -384,9 +405,9 @@ def dashboard():
         ano = request.args.get("ano", hoje.year, type=int)
 
         # Valida mês/ano
-        if not (1 <= mes <= 12):
+        if not mes_valido(mes):
             mes = hoje.month
-        if not (2020 <= ano <= 2030):
+        if not ano_valido(ano):
             ano = hoje.year
 
         current_month = date(ano, mes, 1)
@@ -509,14 +530,17 @@ def admin():
 
         # --- GERAR ESCALA AUTOMÁTICA ---
         if action == "gerar":
-            mes = int(request.form.get("mes", 6))
-            ano = int(request.form.get("ano", 2026))
-            try:
-                qtd = gerar_escala_mes(mes, ano)
-                flash(f"Escala gerada com sucesso! {qtd} dias de plantão escalados.", "success")
-            except Exception as e:
-                flash(f"Erro ao gerar escala: {e}", "danger")
-                app.logger.error(f"Erro gerar escala: {e}")
+            mes = request.form.get("mes", type=int)
+            ano = request.form.get("ano", type=int)
+            if not (mes_valido(mes) and ano_valido(ano)):
+                flash("Mês ou ano inválido. Escolha um mês de 1 a 12 e um ano válido.", "danger")
+            else:
+                try:
+                    qtd = gerar_escala_mes(mes, ano)
+                    flash(f"Escala gerada com sucesso! {qtd} dias de plantão escalados.", "success")
+                except Exception as e:
+                    flash(f"Erro ao gerar escala: {e}", "danger")
+                    app.logger.error(f"Erro gerar escala: {e}")
 
         # --- ADICIONAR FERIADO MANUAL ---
         elif action == "add_holiday":
@@ -538,6 +562,13 @@ def admin():
             data_fim = request.form.get("data_fim")
             motivo = request.form.get("motivo")
             observacao = request.form.get("observacao", "")
+            inicio, fim = parse_data(data_inicio), parse_data(data_fim)
+            if not inicio or not fim:
+                flash("Informe as datas de início e fim da inatividade.", "danger")
+                return redirect(url_for("admin"))
+            if fim < inicio:
+                flash("A data final não pode ser anterior à data inicial.", "danger")
+                return redirect(url_for("admin"))
             try:
                 for re in tecnico_res:
                     cur.execute("SELECT id FROM tecnicos WHERE re = %s", (re,))
@@ -590,6 +621,10 @@ def admin():
     hoje = date.today()
     mes = request.args.get("mes", hoje.month, type=int)
     ano = request.args.get("ano", hoje.year, type=int)
+    if not mes_valido(mes):
+        mes = hoje.month
+    if not ano_valido(ano):
+        ano = hoje.year
 
     # Tecnicos
     cur.execute("SELECT * FROM tecnicos WHERE ativo = TRUE ORDER BY area, nome")
