@@ -199,7 +199,7 @@ def is_logged_in():
     return session.get("logged_in", False)
 
 def is_admin():
-    return session.get("admin", False)
+    return bool(session.get("is_admin", False))
 
 def get_tecnicos_ativos():
     conn = get_db_connection()
@@ -300,6 +300,9 @@ def gerar_escala_mes(mes, ano):
 
         for area, turnos in config_areas.items():
             tecnicos_area = [t for t in tecnicos_por_area.get(area, []) if t["id"] not in inativos]
+            if not tecnicos_area:
+                app.logger.warning(f"Sem técnicos disponíveis em {area} no dia {dia}; turno não escalado")
+                continue
             usados_hoje = set()
 
             for turno_label, _ in turnos:
@@ -349,11 +352,15 @@ def login():
         
         if usuario_valido:
             # Lendo por índice (0=id, 1=username, 2=admin) para evitar conflito de DictCursor
-            session['admin'] = usuario_valido[1]
-            session['is_admin'] = usuario_valido[2]
-            
-            # Força o redirecionamento imediato para a área administrativa
-            return redirect(url_for('admin'))
+            session.clear()
+            session['logged_in'] = True
+            session['username'] = usuario_valido[1]
+            session['is_admin'] = bool(usuario_valido[2])
+
+            # Só administradores vão para o painel; os demais veem o dashboard
+            if session['is_admin']:
+                return redirect(url_for('admin'))
+            return redirect(url_for('dashboard'))
             
         flash('Usuário ou senha inválidos!')
     return render_template('login.html')
@@ -487,9 +494,12 @@ def dashboard():
 # =========================================================
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
-    # Se a sessão não encontrar a chave 'admin', joga para a tela de login
-    if 'admin' not in session:
+    # Sem login: vai para a tela de login. Logado sem permissão: acesso negado.
+    if not is_logged_in():
         return redirect(url_for('login'))
+    if not is_admin():
+        flash("Acesso restrito a administradores.", "danger")
+        return redirect(url_for('dashboard'))
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)

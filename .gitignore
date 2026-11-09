@@ -2,3 +2,9 @@
 escalas.db
 __pycache__/
 tests/__pycache__/
+
+# Testes
+reports/
+.coverage
+.pytest_cache/
+htmlcov/
