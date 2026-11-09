@@ -165,9 +165,11 @@
             </div>
             <div class="text-end">
                 {% if is_logged_in %}
+                {% if is_admin %}
                 <a href="/admin" class="btn btn-sm btn-light fw-semibold me-1">
                     <i class="bi bi-shield-lock me-1"></i>Admin
                 </a>
+                {% endif %}
                 <a href="/logout" class="btn btn-sm btn-outline-light">Sair</a>
                 {% else %}
                 <a href="/login" class="btn btn-sm btn-outline-light">
